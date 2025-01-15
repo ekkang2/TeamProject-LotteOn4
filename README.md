@@ -95,7 +95,7 @@ LotteOn 프로젝트는 **롯데 e-커머스** 환경과 유사한 **쇼핑몰 �
 
 ## 🤝 질문 및 답변
 프로젝트에 대한 문의는 아래 연락처로 부탁드립니다:
-- **황수빈**: (mailto:ghkdtnqls95@gmail.com)
+- **강은경**: (mailto:rkddmsrud27@gmail.com)
 
 
 ---
