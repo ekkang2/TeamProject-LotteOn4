@@ -8,6 +8,7 @@ import org.springframework.data.mongodb.core.query.Criteria;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+
 @Repository
 public class UserBehaviorRepository {
 
@@ -18,47 +19,50 @@ public class UserBehaviorRepository {
     }
 
     public List<RecommendationResult> findRelatedProducts(int targetProdId, String currentUserId) {
-        // Step 1: Get the users who viewed the target product, excluding the current user
+        // 1. 대상 상품을 조회한 사용자 목록을 가져옴 - 현재 사용자(currentUserId)는 제외
         MatchOperation matchUsersWhoViewedTarget = Aggregation.match(
                 Criteria.where("prodId").is(targetProdId)
-                        .and("uid").ne(currentUserId)
+                        .and("uid").ne(currentUserId) // 현재 사용자 제외
         );
 
-        // Step 2: Lookup all products viewed by these users
-        GroupOperation groupByUser = Aggregation.group("uid").first("uid").as("uid"); // Group by uid to get unique users
+        // 2. 해당 상품을 본 사용자들의 ID(uid) 목록을 그룹화하여 가져옴
+        GroupOperation groupByUser = Aggregation.group("uid").first("uid").as("uid"); // uid(사용자 ID) 기준으로 그룹화
+
+        // 3. 그룹화된 사용자 ID를 기준으로 userLogs 컬렉션에서 해당 사용자가 조회한 다른 상품 목록 가져오기
         LookupOperation lookupProductsViewedByUsers = Aggregation.lookup("userLogs", "uid", "uid", "userViews");
 
-        // Step 3: Unwind the user views to treat each view as a separate document
+        // 4.조회한 userViews 배열을 개별 문서로 변환하여 각 상품 조회를 개별적으로 처리
         UnwindOperation unwindViews = Aggregation.unwind("userViews");
 
-        // Step 4: Filter out the target product from the results
+        // 5. 대상 상품(targetProdId)과 동일한 상품은 제외하여 필터링
         MatchOperation matchOtherProducts = Aggregation.match(
                 Criteria.where("userViews.prodId").ne(targetProdId)
         );
 
-        // Step 5: Group by prodId and count views for each product
+        // 6. 상품 ID(prodId) 기준으로 그룹화하고, 각 상품이 조회된 횟수를 카운트
         GroupOperation groupByProdId = Aggregation.group("userViews.prodId")
-                .count().as("viewCount");
+                .count().as("viewCount"); // 조회 횟수 계산
 
-        // Step 6: Project the results into a format with relatedProdId and viewCount
+        // 7. 결과를 relatedProdId(연관 상품 ID)와 viewCount(조회 횟수) 형식으로 변환
         ProjectionOperation projectToRelatedProduct = Aggregation.project("viewCount")
-                .and("_id").as("relatedProdId"); // Include viewCount in projection
+                .and("_id").as("relatedProdId"); // 조회된 상품 ID를 relatedProdId로 저장
 
-        // Step 7: Sort by view count and limit to top 5
+        // 8. 조회 횟수를 기준으로 내림차순 정렬 후 상위 5개 상품만 선택
         SortOperation sortByViewCount = Aggregation.sort(Sort.by(Sort.Direction.DESC, "viewCount"));
+
         Aggregation aggregation = Aggregation.newAggregation(
-                matchUsersWhoViewedTarget,
-                groupByUser,
-                lookupProductsViewedByUsers,
-                unwindViews,
-                matchOtherProducts,
-                groupByProdId,
-                projectToRelatedProduct,
-                sortByViewCount,
-                Aggregation.limit(5)
+                matchUsersWhoViewedTarget,     // 대상 상품을 조회한 사용자 찾기
+                groupByUser,                   // 사용자별로 그룹화
+                lookupProductsViewedByUsers,   // 해당 사용자가 조회한 다른 상품 가져오기
+                unwindViews,                   // 배열을 개별 문서로 변환
+                matchOtherProducts,            // 대상 상품과 동일한 상품 필터링
+                groupByProdId,                 // 조회된 상품을 그룹화하고 조회 횟수 계산
+                projectToRelatedProduct,       // 조회 결과를 연관 상품 ID와 조회 횟수 형식으로 변환
+                sortByViewCount,               // 조회 횟수 기준으로 정렬
+                Aggregation.limit(5)           // 상위 5개 상품만 선택
         );
 
-        // Execute the aggregation
+        // 9. MongoDB Aggregation 실행 및 결과 반환
         AggregationResults<RecommendationResult> results = mongoTemplate.aggregate(aggregation, "userLogs", RecommendationResult.class);
         return results.getMappedResults();
     }
